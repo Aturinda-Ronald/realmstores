@@ -1,0 +1,35 @@
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Hide .php extensions
+# Redirect .php URLs to extensionless versions (301 permanent redirect)
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s([^.]+)\.php [NC]
+RewriteCond %{REQUEST_URI} !/api/ [NC]
+RewriteRule ^ %1 [R=301,L]
+
+# Internally rewrite extensionless URLs to .php files
+# Skip if requesting an actual directory
+RewriteCond %{REQUEST_FILENAME} !-d
+# Skip if requesting an actual file
+RewriteCond %{REQUEST_FILENAME} !-f
+# Don't rewrite if .php file doesn't exist
+RewriteCond %{REQUEST_FILENAME}.php -f
+# Rewrite to .php
+RewriteRule ^(.+)$ $1.php [L,QSA]
+
+# Remove trailing slashes
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)/$ /$1 [L,R=301]
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Disable directory browsing
+Options -Indexes
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>

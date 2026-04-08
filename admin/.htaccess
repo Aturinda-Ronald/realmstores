@@ -1,0 +1,40 @@
+# Realm Shop - Admin .htaccess
+
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Default to login.php if accessing /admin or /admin/
+DirectoryIndex login.php index.php
+
+# Hide .php extensions in admin area
+# Redirect .php URLs to extensionless versions (301 permanent redirect)
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s/admin/([^.]+)\.php [NC]
+RewriteCond %{REQUEST_URI} !^/admin/api/ [NC]
+RewriteRule ^ /admin/%1 [R=301,L]
+
+# Internally rewrite extensionless URLs to .php files
+# Skip if requesting an actual directory
+RewriteCond %{REQUEST_FILENAME} !-d
+# Skip if requesting an actual file
+RewriteCond %{REQUEST_FILENAME} !-f
+# Don't rewrite if .php file doesn't exist
+RewriteCond %{REQUEST_FILENAME}.php -f
+# Rewrite to .php
+RewriteRule ^(.+)$ $1.php [L,QSA]
+
+# Disable directory browsing
+Options -Indexes
+
+# Security: Additional protection for admin area
+<FilesMatch "^(\.htaccess|\.htpasswd|config\.php)">
+    Require all denied
+</FilesMatch>
+
+# Optional: Uncomment to restrict admin access by IP address
+# Replace with your actual IP addresses
+# <RequireAll>
+#     Require all denied
+#     Require ip 127.0.0.1
+#     Require ip ::1
+#     # Add your home/office IP: Require ip YOUR.IP.ADDRESS
+# </RequireAll>

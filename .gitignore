@@ -1,0 +1,20 @@
+# Logs
+/logs/
+*.log
+debug_log.txt
+
+# User uploaded content (too large for git, manage separately)
+/uploads/products/*
+/uploads/promotions/*
+
+# Keep the folder structure
+!uploads/products/.gitkeep
+!uploads/promotions/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

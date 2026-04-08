@@ -1,0 +1,208 @@
+<?php
+session_start();
+require_once '../config.php';
+require_once 'includes/functions.php';
+require_once '../includes/mail_functions.php';
+
+// Ensure admin is logged in
+if (!isLoggedIn()) {
+    redirect(ADMIN_URL . '/login.php');
+}
+
+// Check if bulk email session exists
+if (!isset($_SESSION['bulk_email'])) {
+    redirect(ADMIN_URL . '/marketing.php');
+}
+
+$bulkEmail = $_SESSION['bulk_email'];
+$batchSize = $bulkEmail['batch_size'];
+$currentIndex = $bulkEmail['current_index'];
+$userIds = $bulkEmail['user_ids'];
+$totalUsers = $bulkEmail['total_users'];
+$sentCount = $bulkEmail['sent_count'];
+
+// Optimize for speed
+set_time_limit(0);
+ini_set('max_execution_time', 0);
+
+// Get the next batch of user IDs
+$batchUserIds = array_slice($userIds, $currentIndex, $batchSize);
+
+// Fetch user details for this batch
+if (!empty($batchUserIds)) {
+    $placeholders = implode(',', array_fill(0, count($batchUserIds), '?'));
+    $stmt = $pdo->prepare("SELECT email, first_name FROM users WHERE id IN ($placeholders) AND email IS NOT NULL AND email != ''");
+    $stmt->execute($batchUserIds);
+    $users = $stmt->fetchAll();
+} else {
+    $users = [];
+}
+
+$currentBatchSent = 0;
+$errors = [];
+
+// Send emails to this batch
+foreach ($users as $user) {
+    try {
+        if (sendMarketingEmail($user['email'], $bulkEmail['subject'], $bulkEmail['message'], $bulkEmail['products'])) {
+            $currentBatchSent++;
+            $sentCount++;
+        }
+        // Minimal delay to avoid overwhelming the mail server
+        usleep(10000); // 0.01 second delay between emails
+    } catch (Exception $e) {
+        $errors[] = "Failed to send to " . $user['email'] . ": " . $e->getMessage();
+    }
+}
+
+// Update session data
+$_SESSION['bulk_email']['sent_count'] = $sentCount;
+$_SESSION['bulk_email']['current_index'] = $currentIndex + count($users);
+
+$progress = round(($sentCount / $totalUsers) * 100, 1);
+$isComplete = $sentCount >= $totalUsers || $currentIndex + count($users) >= $totalUsers;
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sending Marketing Emails - Admin Panel</title>
+    <link rel="icon" type="image/svg+xml" href="<?php echo BASE_URL; ?>/assets/favicon.svg">
+    <style>
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: #ffffff;
+            padding: 50px 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        h1 {
+            color: #1a1a1a;
+            margin-bottom: 15px;
+            font-size: 28px;
+            font-weight: 700;
+            padding: 18px;
+            border-radius: 8px;
+            margin-top: 25px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .error-log strong {
+            display: block;
+            margin-bottom: 10px;
+            color: #856404;
+            font-size: 14px;
+        }
+        
+        .error-log p {
+            font-size: 12px;
+            color: #856404;
+            margin: 6px 0;
+            padding-left: 20px;
+        }
+        
+        .error-log p::before {
+            content: '• ';
+            margin-left: -15px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <?php if (!$isComplete): ?>
+            <h1>Sending Marketing Campaign</h1>
+            <p class="subtitle">Please wait while we deliver your email to selected users</p>
+            
+            <div class="spinner-container">
+                <div class="spinner"></div>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar" style="width: <?php echo $progress; ?>%;"></div>
+            </div>
+            <div class="progress-text"><?php echo $progress; ?>%</div>
+            
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Sent</div>
+                    <div class="stat-value"><?php echo number_format($sentCount); ?></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Total</div>
+                    <div class="stat-value"><?php echo number_format($totalUsers); ?></div>
+                </div>
+            </div>
+            
+            <div class="batch-info">
+                Processing batch <?php echo ceil($currentIndex / $batchSize) + 1; ?> of <?php echo ceil($totalUsers / $batchSize); ?>
+            </div>
+            
+            <?php if (!empty($errors)): ?>
+            <div class="error-log">
+                <strong>Some emails encountered issues:</strong>
+                <?php foreach (array_slice($errors, 0, 10) as $error): ?>
+                    <p><?php echo htmlspecialchars($error); ?></p>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            
+            <script>
+                // Auto-refresh to process next batch
+                setTimeout(function() {
+                    window.location.reload();
+                }, 500);
+            </script>
+            
+        <?php else: ?>
+            <div class="complete-icon"></div>
+            <h1 class="complete-title">Campaign Sent Successfully</h1>
+            <p class="complete-message">
+                Your marketing email has been delivered to <strong><?php echo number_format($sentCount); ?></strong> user<?php echo $sentCount > 1 ? 's' : ''; ?>
+            </p>
+            
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Total Delivered</div>
+                    <div class="stat-value"><?php echo number_format($sentCount); ?></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Success Rate</div>
+                    <div class="stat-value"><?php echo round(($sentCount / $totalUsers) * 100); ?>%</div>
+                </div>
+            </div>
+            
+            <?php
+            // Clear session data
+            unset($_SESSION['bulk_email']);
+            ?>
+            
+            <a href="marketing.php" class="btn-primary">Send Another Campaign</a>
+            <a href="index.php" class="btn-primary btn-secondary">Back to Dashboard</a>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
